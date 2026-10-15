@@ -499,7 +499,7 @@ var DR = (function () {
    once, waits in an outbox that survives reloads and offline stretches, and is pushed one file at a time. */
 var DRSync = (function () {
   var LS_CFG = 'dr-gh-settings', LS_CACHE = 'dr-gh-cache', LS_OUT = 'dr-gh-outbox';
-  var DEFAULTS = { owner: '', repo: 'daily-run-data', branch: 'main', api: 'https://api.github.com' };
+  var DEFAULTS = { owner: 'Anankayos', repo: 'daily-run-data', branch: 'main', api: 'https://api.github.com' };
   var FILE_RE = /^(config|progress|days|notes)\/([A-Za-z0-9_\-.~:@+]+)\.json$/;
   var POLL_MS = 45000, FRESH_MS = 20000;
 
