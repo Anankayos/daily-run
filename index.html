@@ -284,11 +284,14 @@ var DR = (function () {
   function holidayOf(d, cfg) { return (cfg.holidays || []).find(function (h) { return inRange(d, h.from, h.to); }) || null; }
   function seasonOf(d, cfg) { return (cfg.seasons || []).find(function (s) { return inRange(d, s.from, s.to); }) || null; }
 
+  // Mon/Wed: Udemy course, Tue/Thu: HSK 2 books, Friday: no Chinese, weekend: review of the week's words and grammar.
   function chineseFor(d, day, cfg) {
-    if (day && day.chineseOverride && day.chineseType) return { type: day.chineseType, override: true };
-    var start = cfg.alternationStart || '2026-10-19';
+    var start = cfg.alternationStart || '2026-10-19', w = dow(d);
     if (d < start) return { type: 'revision', override: false };
-    return { type: diffDays(start, d) % 2 === 0 ? 'udemy' : 'hsk', override: false };
+    if (w === 5) return { type: 'none', override: false };
+    if (w === 0 || w === 6) return { type: 'review', override: false };
+    if (day && day.chineseOverride && (day.chineseType === 'hsk' || day.chineseType === 'udemy')) return { type: day.chineseType, override: true };
+    return { type: w === 1 || w === 3 ? 'udemy' : 'hsk', override: false };
   }
   function laneCourses(progress, lane) {
     return Object.keys(progress).map(function (k) { return progress[k]; })
@@ -343,9 +346,11 @@ var DR = (function () {
     var w = dow(d), cls = isClassDay(d, cfg), hol = holidayOf(d, cfg), season = seasonOf(d, cfg);
     var ch = chineseFor(d, day, cfg), eng = engineFor(d, progress, cfg), des = laneCurrent(progress, 'design');
     var ix = progress.ixdf, hsk = progress.hsk2, udemy = progress['chinese-udemy'];
-    var chTitle = ch.type === 'hsk' ? 'Chinese · HSK 2 books' : ch.type === 'udemy' ? 'Chinese · Udemy course' : 'Chinese · revision week';
+    var chTitle = ch.type === 'hsk' ? 'Chinese · HSK 2 books' : ch.type === 'udemy' ? 'Chinese · Udemy course'
+      : ch.type === 'review' ? 'Chinese · weekly review' : 'Chinese · revision week';
     var chSub = ch.type === 'hsk' ? 'Textbook + workbook' + (hsk ? ' · ' + courseSub(hsk) : '')
       : ch.type === 'udemy' ? 'From Zero to Chinese Hero' + (udemy ? ' · ' + courseSub(udemy) : '')
+      : ch.type === 'review' ? "This week's new words and grammar"
       : 'Review HSK 1 and 2 before the books resume on 19 Oct';
     var ixTitle = 'IxDF';
     var ixSub = ix ? (ix.courseName || 'Current course') + ' · ' + (ix.coursePct || 0) + '%' : '';
@@ -363,10 +368,11 @@ var DR = (function () {
         + ' today (you are on ' + unit + ' ' + Math.min(c.total, (c.current || 0) + 1) + ').';
     };
     var engDetail = (eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine) + behind(eng.c);
-    var chStart = cfg.alternationStart || '2026-10-19';
-    var chTomorrow = ch.type === 'revision' ? '' : diffDays(chStart, addDays(d, 1)) % 2 === 0 ? 'Tomorrow is a book day.' : 'Tomorrow is a Udemy day.';
+    var chNext = chineseFor(addDays(d, 1), null, cfg).type;
+    var chTomorrow = { udemy: 'Tomorrow is a Udemy day.', hsk: 'Tomorrow is a book day.', none: 'No Chinese tomorrow (Friday).', review: 'Tomorrow is the weekend review.' }[chNext] || '';
     var chDetail = ch.type === 'hsk' ? 'Textbook first, then the workbook: one lesson every two book days. ' + chTomorrow
-      : ch.type === 'udemy' ? 'Pick up at your next lecture in the course player. ' + chTomorrow
+      : ch.type === 'udemy' ? 'Pick up at your next lecture in the course player; this session runs until 07:30. ' + chTomorrow
+      : ch.type === 'review' ? "Go back over the new words and grammar from this week's Udemy lectures and HSK 2 lessons."
       : 'Go back over HSK 1 and 2 vocabulary and grammar.';
     chDetail += ch.type === 'hsk' ? behind(hsk) : ch.type === 'udemy' ? behind(udemy) : '';
     var chinese = function (s, e) { return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null }); };
@@ -379,17 +385,20 @@ var DR = (function () {
       var designBlock = (w === 1 || w === 3 || w === 5) && des
         ? B('08:35', '09:20', 'design', 'Design lane · ' + des.name, { cat: 'design', sub: courseSub(des), detail: designDetail, link: courseLink(des) })
         : B('08:35', '09:20', 'design', ixTitle, { cat: 'ixdf', sub: ixSub, detail: ixDetail, link: courseLink(ix) });
+      var engine = function (s, e) { return B(s, e, 'engine', eng.c || eng.name !== 'Engine lane' ? 'Engine lane · ' + eng.name : 'Engine lane', { cat: 'engine', sub: engSub, detail: engDetail, link: courseLink(eng.c) }); };
+      // Udemy days run Chinese to 07:30 and shorten the engine lane; Friday has no Chinese, so the engine lane starts at 05:55.
+      var chEngine = ch.type === 'none' ? [engine('05:55', '08:25')]
+        : ch.type === 'udemy' ? [chinese('05:55', '07:30'), B('07:30', '07:40', 'break1', 'Break'), engine('07:40', '08:25')]
+        : [chinese('05:55', '06:45'), B('06:45', '06:55', 'break1', 'Break'), engine('06:55', '08:25')];
       var morning = [
         B('05:00', '05:10', 'wake', 'Wake up'),
         B('05:10', '05:40', 'run', 'Run', { cat: 'health' }),
-        B('05:40', '05:55', 'breakfast', 'Shower, breakfast'),
-        chinese('05:55', '06:45'),
-        B('06:45', '06:55', 'break1', 'Break'),
-        B('06:55', '08:25', 'engine', eng.c || eng.name !== 'Engine lane' ? 'Engine lane · ' + eng.name : 'Engine lane', { cat: 'engine', sub: engSub, detail: engDetail, link: courseLink(eng.c) }),
+        B('05:40', '05:55', 'breakfast', 'Shower, breakfast')
+      ].concat(chEngine, [
         B('08:25', '08:35', 'break2', 'Break'),
         designBlock,
         B('09:20', '09:30', 'setup', 'Set up for work')
-      ];
+      ]);
       if (cls) {
         kind = 'class';
         blocks = morning.concat([
@@ -473,7 +482,9 @@ var DR = (function () {
       tickable: tickable.length, done: done.length,
       ratio: tickable.length ? done.length / tickable.length : 0,
       xp: done.reduce(function (a, b) { return a + b.xp; }, 0),
-      minimum: has(function (b) { return b.cat === 'chinese' && b.min; }) && has(function (b) { return b.cat === 'reading'; }) && has(function (b) { return b.lane; })
+      // On a day without a Chinese block (Friday) the minimum run is reading + one lane block.
+      minimum: (!tickable.some(function (b) { return b.cat === 'chinese'; }) || has(function (b) { return b.cat === 'chinese' && b.min; }))
+        && has(function (b) { return b.cat === 'reading'; }) && has(function (b) { return b.lane; })
     };
   }
   function levelFor(xp) {
@@ -1055,7 +1066,7 @@ var DRSync = (function () {
     if (plan.cls) banners.push(html`<div class="banner red"><${Info}/><span><b>DBGA class day, 14:00–18:00.</b> Morning as usual, design lectures on the train, rest in the evening.</span></div>`);
     if (plan.hol) banners.push(html`<div class="banner warn"><${Info}/><span><b>${plan.hol.label || 'Holidays'}.</b> ${plan.hol.note || 'Half pace. The minimum run is a full win.'}</span></div>`);
     if (plan.kind === 'saturday' && plan.season && !plan.hol) banners.push(html`<div class="banner"><${Info}/><span><b>Saturday season: ${plan.season.label}.</b> ${dm(plan.season.from)} – ${dm(plan.season.to)}${plan.season.goal ? ' · ' + plan.season.goal : plan.season.note ? ' · ' + plan.season.note : ''}</span></div>`);
-    if (badDay) banners.push(html`<div class="banner warn"><${Info}/><span><b>Minimum run today.</b> Chinese, reading and one lane block. That counts as a full day for your streak.</span></div>`);
+    if (badDay) banners.push(html`<div class="banner warn"><${Info}/><span><b>Minimum run today.</b> ${plan.chinese.type === 'none' ? 'Reading' : 'Chinese, reading'} and one lane block. That counts as a full day for your streak.</span></div>`);
     if (st.minimum) banners.push(html`<div class="banner good"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="var(--good)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Minimum run banked.</b> ${isToday ? 'Streak safe for today.' : 'This day counts for the streak.'}</span></div>`);
     if (sync.state === 'error') banners.push(html`<div class="banner red"><${Info}/><span><b>Sync stopped.</b> ${sync.error} Your changes stay on this device until it works again. <button class="linkbtn" onClick=${DRSync.openSettings}>Open sync settings</button></span></div>`);
     else if (sync.state === 'offline' && sync.waiting > 0) banners.push(html`<div class="banner warn"><${Info}/><span><b>Offline.</b> ${sync.waiting === 1 ? '1 change' : sync.waiting + ' changes'} will reach GitHub when you're back online.</span></div>`);
@@ -1159,15 +1170,16 @@ var DRSync = (function () {
         <div class="col">
           <section class="panel" aria-label="Chinese today">
             <div class="panel-head"><h2>Chinese today</h2>${plan.chinese.override && html`<button class="linkbtn" onClick=${function () { saveDay(sel, { chineseOverride: false }); }}>Back to schedule</button>`}</div>
-            ${plan.chinese.type === 'revision' && !plan.chinese.override
-              ? html`<p class="empty" style="margin:0 0 10px">Revision week. Alternation starts Mon 19 Oct with the Udemy course.</p>` : ''}
-            <div class="row">
+            ${plan.chinese.type === 'revision' ? html`<p class="empty" style="margin:0">Revision week. From Mon 19 Oct: Udemy on Mon and Wed, HSK 2 books on Tue and Thu.</p>`
+              : plan.chinese.type === 'none' ? html`<p class="empty" style="margin:0">No Chinese on Fridays. The engine lane starts at 05:55 instead.</p>`
+              : plan.chinese.type === 'review' ? html`<p class="empty" style="margin:0">Weekend review: go back over this week's new words and grammar.</p>`
+              : html`<div class="row">
               <div class="seg" role="group" aria-label="Chinese session type">
                 <button aria-pressed=${plan.chinese.type === 'hsk' ? 'true' : 'false'} onClick=${function () { saveDay(sel, { chineseOverride: true, chineseType: 'hsk' }); }}>HSK 2 books</button>
                 <button aria-pressed=${plan.chinese.type === 'udemy' ? 'true' : 'false'} onClick=${function () { saveDay(sel, { chineseOverride: true, chineseType: 'udemy' }); }}>Udemy</button>
               </div>
-              <span class="empty" style="font-size:13px">${plan.chinese.override ? 'Changed for this day' : 'Alternates daily'}</span>
-            </div>
+              <span class="empty" style="font-size:13px">${plan.chinese.override ? 'Changed for this day' : 'Udemy Mon and Wed, books Tue and Thu'}</span>
+            </div>`}
           </section>
 
           <section class="panel" aria-label="Counters">
