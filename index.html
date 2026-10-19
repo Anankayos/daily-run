@@ -312,11 +312,11 @@ var DR = (function () {
     var c = laneCurrent(progress, 'engine');
     return c ? { name: c.name, c: c } : { name: 'Engine lane', c: null };
   }
-  // 20:45–21:30 on Mon–Thu: Design Lab Monday, the one free evening Tuesday, optional catch-up Wednesday (design) and Thursday (IxDF).
+  // 20:45–21:30 on Mon–Thu: Design Lab Monday, the one free evening Tuesday, optional design catch-up Wednesday, IxDF Thursday.
   function eveningSlot(d, cfg) {
     var w = dow(d);
     if (w < 1 || w > 4 || isClassDay(d, cfg)) return null;
-    return ['designlab', 'free', 'catchdesign', 'catchixdf'][w - 1];
+    return ['designlab', 'free', 'catchdesign', 'ixdf'][w - 1];
   }
   function courseSub(c) {
     if (!c) return '';
@@ -436,7 +436,7 @@ var DR = (function () {
           else if (evening === 'catchdesign') blocks.push(des
             ? B('20:45', '21:30', 'evening', 'Catch-up, if needed · design lane', { cat: 'design', opt: true, sub: des.name + ' · ' + courseSub(des), detail: 'Only if the design lane slipped this week. Skipping it never counts against you.' + behind(des), link: courseLink(des) })
             : B('20:45', '21:30', 'evening', 'Catch-up, if needed · IxDF', { cat: 'ixdf', opt: true, sub: ixSub, detail: 'Only if IxDF slipped this week. Skipping it never counts against you.', link: courseLink(ix) }));
-          else if (evening === 'catchixdf') blocks.push(B('20:45', '21:30', 'evening', 'Catch-up, if needed · IxDF', { cat: 'ixdf', opt: true, sub: ixSub, detail: 'Only if you want more IxDF this week. Skipping it never counts against you.' + (ixDetail ? ' ' + ixDetail : ''), link: courseLink(ix) }));
+          else if (evening === 'ixdf') blocks.push(B('20:45', '21:30', 'evening', 'IxDF', { cat: 'ixdf', sub: ixSub, detail: 'Your weekly IxDF evening: it keeps the career program on track for summer 2027.' + (ixDetail ? ' ' + ixDetail : ''), link: courseLink(ix) }));
         }
         blocks.push(reading, sleep);
       }
