@@ -148,6 +148,12 @@ h2 { font: 600 17px/1.2 var(--f-display); letter-spacing: .01em; }
 .chip-now { background: var(--red); color: var(--red-ink); }
 .chip-next { background: var(--surface-2); color: var(--fg); }
 .chip-min { background: var(--warn-soft); color: var(--warn); }
+.chip-opt { background: var(--blue-soft); color: var(--blue); }
+.adj { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.adj b { color: var(--fg); font-weight: 600; }
+.adj button { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 600; touch-action: manipulation; }
+.adj button:hover { border-color: var(--muted); }
+.adj .linkbtn { height: auto; border: 0; background: none; padding: 4px 2px; }
 .state { font: 600 11px/1 var(--f-body); padding: 4px 7px; border-radius: 99px; letter-spacing: .03em; white-space: nowrap; }
 .state.on { background: var(--good-soft); color: var(--good); }
 .state.ahead { background: var(--blue-soft); color: var(--blue); }
@@ -306,13 +312,11 @@ var DR = (function () {
     var c = laneCurrent(progress, 'engine');
     return c ? { name: c.name, c: c } : { name: 'Engine lane', c: null };
   }
+  // 20:45–21:30 on Mon–Thu: Design Lab Monday, the one free evening Tuesday, optional catch-up Wednesday (design) and Thursday (IxDF).
   function eveningSlot(d, cfg) {
     var w = dow(d);
     if (w < 1 || w > 4 || isClassDay(d, cfg)) return null;
-    var mon = mondayOf(d);
-    var free = [0, 1, 2, 3].map(function (i) { return addDays(mon, i); }).filter(function (x) { return !isClassDay(x, cfg); });
-    var i = free.indexOf(d);
-    return i === 0 ? 'designlab' : i === 1 ? 'wow' : 'free';
+    return ['designlab', 'free', 'catchdesign', 'catchixdf'][w - 1];
   }
   function courseSub(c) {
     if (!c) return '';
@@ -335,7 +339,9 @@ var DR = (function () {
   }
   function B(s, e, id, title, o) {
     o = o || {};
-    var b = { id: id, start: s, end: o.endLabel != null ? o.endLabel : e, s: hm(s), e: hm(e), title: title, sub: o.sub || '', cat: o.cat || null, tick: !!o.cat, min: !!o.min, flat: o.flat || 0, detail: o.detail || '', link: o.link || null };
+    // fixed: set by the outside world (work, class, train, bedtime), so a block running late stops there.
+    // opt: optional, gives XP when done but never counts against the day.
+    var b = { id: id, start: s, end: o.endLabel != null ? o.endLabel : e, noEnd: o.endLabel === '', s: hm(s), e: hm(e), title: title, sub: o.sub || '', cat: o.cat || null, tick: !!o.cat, min: !!o.min, flat: o.flat || 0, detail: o.detail || '', link: o.link || null, fixed: !!o.fixed, opt: !!o.opt };
     b.lane = !!b.cat && LANE_CATS.indexOf(b.cat) >= 0;
     b.xp = b.tick ? (b.flat || Math.floor((b.e - b.s) / 5)) : 0;
     return b;
@@ -364,7 +370,7 @@ var DR = (function () {
       var p = pace(c, d);
       if (p.state !== 'behind') return '';
       var unit = c.unit === 'weeks' ? 'week' : c.unit === 'lessons' ? 'lesson' : 'lecture';
-      return ' Behind pace: to be on track you should be at ' + unit + ' ' + Math.min(c.total, Math.ceil(p.expected) + 1) + ' of ' + c.total
+      return ' Behind pace: to be on track you should be at ' + unit + ' ' + Math.min(c.total, Math.floor(p.expected) + 1) + ' of ' + c.total
         + ' today (you are on ' + unit + ' ' + Math.min(c.total, (c.current || 0) + 1) + ').';
     };
     var engDetail = (eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine) + behind(eng.c);
@@ -378,36 +384,35 @@ var DR = (function () {
     var chinese = function (s, e) { return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null }); };
     var reading = B('21:30', '22:00', 'reading', 'Reading', { cat: 'reading', sub: 'Paper book + 2-minute plan for tomorrow', min: true, detail: 'On a rough day, 10 pages count. Then two minutes on tomorrow: where you stopped and the first step.' });
     var designDetail = 'Lecture-style, so it also works on the train. Its theme feeds the Design Lab play session.' + behind(des);
-    var sleep = B('22:00', '23:59', 'sleep', 'Sleep', { endLabel: '' });
+    var sleep = B('22:00', '23:59', 'sleep', 'Sleep', { endLabel: '', fixed: true });
+    reading.fixed = true;
+    var buffer = function (s, e, id) { return B(s, e, id, 'Buffer', { sub: 'Stretch, water, then open the next lesson' }); };
     var kind, blocks, evening = null;
 
     if (w >= 1 && w <= 5) {
-      var designBlock = (w === 1 || w === 3 || w === 5) && des
-        ? B('08:35', '09:20', 'design', 'Design lane · ' + des.name, { cat: 'design', sub: courseSub(des), detail: designDetail, link: courseLink(des) })
-        : B('08:35', '09:20', 'design', ixTitle, { cat: 'ixdf', sub: ixSub, detail: ixDetail, link: courseLink(ix) });
       var engine = function (s, e) { return B(s, e, 'engine', eng.c || eng.name !== 'Engine lane' ? 'Engine lane · ' + eng.name : 'Engine lane', { cat: 'engine', sub: engSub, detail: engDetail, link: courseLink(eng.c) }); };
-      // Udemy days run Chinese to 07:30 and shorten the engine lane; Friday has no Chinese, so the engine lane starts at 05:55.
-      var chEngine = ch.type === 'none' ? [engine('05:55', '08:25')]
-        : ch.type === 'udemy' ? [chinese('05:55', '07:30'), B('07:30', '07:40', 'break1', 'Break'), engine('07:40', '08:25')]
-        : [chinese('05:55', '06:45'), B('06:45', '06:55', 'break1', 'Break'), engine('06:55', '08:25')];
+      // Mon–Thu: Chinese gets the room it needs (about 07:30, earlier means more engine time), then the full 90-minute engine lane.
+      // Friday has no Chinese, so it carries the week's long design-lane (or IxDF) block instead.
+      var studies = ch.type === 'none' ? [
+          engine('05:55', '07:25'),
+          buffer('07:25', '07:40', 'break1'),
+          des ? B('07:40', '09:15', 'design', 'Design lane · ' + des.name, { cat: 'design', sub: courseSub(des), detail: designDetail, link: courseLink(des) })
+              : B('07:40', '09:15', 'design', ixTitle, { cat: 'ixdf', sub: ixSub, detail: ixDetail, link: courseLink(ix) })
+        ] : [chinese('05:55', '07:30'), buffer('07:30', '07:45', 'break1'), engine('07:45', '09:15')];
       var morning = [
         B('05:00', '05:10', 'wake', 'Wake up'),
         B('05:10', '05:40', 'run', 'Run', { cat: 'health' }),
         B('05:40', '05:55', 'breakfast', 'Shower, breakfast')
-      ].concat(chEngine, [
-        B('08:25', '08:35', 'break2', 'Break'),
-        designBlock,
-        B('09:20', '09:30', 'setup', 'Set up for work')
-      ]);
+      ].concat(studies, [B('09:15', '09:30', 'setup', 'Set up for work')]);
       if (cls) {
         kind = 'class';
         blocks = morning.concat([
-          B('09:30', '12:45', 'lqa1', 'LQA work'),
-          B('12:45', '13:26', 'lunch', 'Lunch, walk to the station'),
-          des ? B('13:26', '14:26', 'trainout', 'Train out · design lane', { cat: 'design', sub: des.name + ', downloaded in the Udemy app', detail: 'Download the next lectures in the Udemy app before you leave home.' + behind(des), link: courseLink(des) })
-              : B('13:26', '14:26', 'trainout', 'Train out · IxDF', { cat: 'ixdf', sub: ixSub, detail: ixDetail, link: courseLink(ix) }),
-          B('14:00', '18:00', 'dbga', 'DBGA class', { cat: 'dbga', flat: 20, sub: 'Second year · 14:00–18:00' }),
-          B('18:26', '19:26', 'trainback', 'Train back · IxDF or a book', { cat: 'ixdf', sub: ixSub, detail: 'IxDF reading or your book. Home about 19:30.', link: courseLink(ix) }),
+          B('09:30', '12:45', 'lqa1', 'LQA work', { fixed: true }),
+          B('12:45', '13:26', 'lunch', 'Lunch, walk to the station', { fixed: true }),
+          des ? B('13:26', '14:26', 'trainout', 'Train out · design lane', { cat: 'design', fixed: true, sub: des.name + ', downloaded in the Udemy app', detail: 'Download the next lectures in the Udemy app before you leave home.' + behind(des), link: courseLink(des) })
+              : B('13:26', '14:26', 'trainout', 'Train out · IxDF', { cat: 'ixdf', fixed: true, sub: ixSub, detail: ixDetail, link: courseLink(ix) }),
+          B('14:00', '18:00', 'dbga', 'DBGA class', { cat: 'dbga', fixed: true, flat: 20, sub: 'Second year · 14:00–18:00' }),
+          B('18:26', '19:26', 'trainback', 'Train back · IxDF or a book', { cat: 'ixdf', fixed: true, sub: ixSub, detail: 'IxDF reading or your book. Home about 19:30.', link: courseLink(ix) }),
           B('19:45', '20:30', 'dinner', 'Dinner'),
           B('20:30', '21:30', 'rest', 'Rest', { sub: 'No Gigcrawler tonight' }),
           reading, sleep
@@ -415,20 +420,23 @@ var DR = (function () {
       } else {
         kind = w === 5 ? 'friday' : 'regular';
         blocks = morning.concat([
-          B('09:30', '13:00', 'lqa1', 'LQA work'),
-          B('13:00', '13:30', 'lunch', 'Lunch'),
-          B('13:30', '18:00', 'lqa2', 'LQA work'),
+          B('09:30', '13:00', 'lqa1', 'LQA work', { fixed: true }),
+          B('13:00', '13:30', 'lunch', 'Lunch', { fixed: true }),
+          B('13:30', '18:00', 'lqa2', 'LQA work', { fixed: true }),
           B('18:00', '18:30', 'walk', 'Walk outside', { cat: 'health', sub: 'No screens', detail: 'It marks the end of work at home.' })
         ]);
         if (w === 5) {
-          blocks.push(B('18:30', '21:30', 'gamenight', 'Game night with friends', { detail: "If it runs past 22:00, skip tomorrow's first block, never the sleep." }));
+          blocks.push(B('18:30', '21:30', 'gamenight', 'Game night with friends', { fixed: true, detail: "If it runs past 22:00, skip tomorrow's first block, never the sleep." }));
         } else {
           evening = eveningSlot(d, cfg);
           blocks.push(B('18:30', '20:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: "Design work for the team. If the team needs more time, it takes Sunday's spare slot." }));
           blocks.push(B('20:00', '20:45', 'dinner', 'Dinner'));
-          if (evening === 'designlab') blocks.push(B('20:45', '21:30', 'evening', 'Design Lab play session', { cat: 'designlab', sub: 'First free evening of the week', detail: 'Critical analysis plus old lessons, themed on ' + (des ? LAB_THEME[des.id] || 'the design lane' : 'UX and AI') + '.' }));
-          else if (evening === 'wow') blocks.push(B('20:45', '21:30', 'evening', 'WoW D&D campaign', { cat: 'leisure', sub: '45-minute hard stop', detail: 'Ideas in between go into one note. Build session 1 plus a one-page world summary, nothing more for now.' }));
-          else blocks.push(B('20:45', '21:30', 'evening', 'Free evening'));
+          if (evening === 'designlab') blocks.push(B('20:45', '21:30', 'evening', 'Design Lab play session', { cat: 'designlab', sub: 'Monday evening', detail: 'Critical analysis plus old lessons, themed on ' + (des ? LAB_THEME[des.id] || 'the design lane' : 'UX and AI') + '.' }));
+          else if (evening === 'free') blocks.push(B('20:45', '21:30', 'evening', 'Free evening', { sub: 'WoW D&D campaign here if it is on (45-minute hard stop)', detail: 'Your one free weekday evening. Campaign ideas in between go into one note: session 1 plus a one-page world summary, nothing more for now.' }));
+          else if (evening === 'catchdesign') blocks.push(des
+            ? B('20:45', '21:30', 'evening', 'Catch-up, if needed · design lane', { cat: 'design', opt: true, sub: des.name + ' · ' + courseSub(des), detail: 'Only if the design lane slipped this week. Skipping it never counts against you.' + behind(des), link: courseLink(des) })
+            : B('20:45', '21:30', 'evening', 'Catch-up, if needed · IxDF', { cat: 'ixdf', opt: true, sub: ixSub, detail: 'Only if IxDF slipped this week. Skipping it never counts against you.', link: courseLink(ix) }));
+          else if (evening === 'catchixdf') blocks.push(B('20:45', '21:30', 'evening', 'Catch-up, if needed · IxDF', { cat: 'ixdf', opt: true, sub: ixSub, detail: 'Only if you want more IxDF this week. Skipping it never counts against you.' + (ixDetail ? ' ' + ixDetail : ''), link: courseLink(ix) }));
         }
         blocks.push(reading, sleep);
       }
@@ -443,8 +451,8 @@ var DR = (function () {
       blocks = [
         B('10:30', '10:45', 'wake', 'Wake up, breakfast'),
         chinese('10:45', '11:35'),
-        B('11:35', '11:45', 'break1', 'Break'),
-        B('11:45', '13:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: 'Weekend Gigcrawler block, before the workout.' }),
+        buffer('11:35', '11:50', 'break1'),
+        B('11:50', '13:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: 'Weekend Gigcrawler block, before the workout.' }),
         B('13:00', '14:00', 'workout', 'Workout', { cat: 'health' }),
         B('14:00', '14:45', 'lunch', 'Shower, lunch'),
         seasonBlock,
@@ -452,7 +460,8 @@ var DR = (function () {
         B('17:00', '18:30', 'designsession', 'Design session', { cat: 'design', sub: "Course exercises + this week's Design Lab note", detail: designSession.detail, link: designSession.link }),
         B('18:30', '19:15', 'dinner', 'Dinner'),
         B('19:15', '20:45', 'dbgahw', 'DBGA homework', { cat: 'dbga' }),
-        B('20:45', '21:30', 'free', 'Free'),
+        des ? B('20:45', '21:30', 'free', 'Free, or a catch-up if needed', { cat: 'design', opt: true, sub: 'Rest is the default. Tick only if you used it for ' + des.name, link: courseLink(des) })
+            : B('20:45', '21:30', 'free', 'Free, or a catch-up if needed', { cat: 'ixdf', opt: true, sub: 'Rest is the default. Tick only if you used it for IxDF', link: courseLink(ix) }),
         reading, sleep
       ];
     } else {
@@ -460,8 +469,8 @@ var DR = (function () {
       blocks = [
         B('10:30', '10:45', 'wake', 'Wake up, breakfast'),
         chinese('10:45', '11:35'),
-        B('11:35', '11:45', 'break1', 'Break'),
-        B('11:45', '13:00', 'spare', 'Spare slot', { cat: 'spare', sub: 'Whatever slipped this week', detail: 'If the Gigcrawler team needs more time, it can take this slot.' }),
+        buffer('11:35', '11:50', 'break1'),
+        B('11:50', '13:00', 'spare', 'Spare slot', { cat: 'spare', sub: 'Whatever slipped this week', detail: 'If the Gigcrawler team needs more time, it can take this slot.' }),
         B('13:00', '14:00', 'workout', 'Workout', { cat: 'health' }),
         B('14:00', '15:00', 'lunch', 'Shower, lunch'),
         B('15:00', '17:00', 'enginecatchup', 'Engine lane catch-up · ' + eng.name, { cat: 'engine', sub: engSub, detail: 'Whatever the weekday mornings missed. ' + oneLine + behind(eng.c), link: courseLink(eng.c) }),
@@ -470,18 +479,56 @@ var DR = (function () {
         reading, sleep
       ];
     }
-    return { date: d, kind: kind, blocks: blocks, chinese: ch, cls: cls, hol: hol, season: season, evening: evening };
+    return { date: d, kind: kind, blocks: applyAdjust(blocks, day && day.adjust), chinese: ch, cls: cls, hol: hol, season: season, evening: evening };
+  }
+
+  // Per-day manual adjustments: adjust[blockId] = minutes the block ended later (+) or earlier (-) than planned.
+  // Running late pushes the following blocks back, up to the next fixed block (work, class, train, bedtime);
+  // a block left with no room is marked squeezed. Finishing early hands the time to the next study block.
+  function hhmm(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  function applyAdjust(blocks, adj) {
+    if (!adj || !Object.keys(adj).length) return blocks;
+    blocks = blocks.map(function (b) { return Object.assign({}, b); });
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i], delta = adj[b.id];
+      if (!delta || b.fixed) continue;
+      var nextFixed = blocks.slice(i + 1).find(function (x) { return x.fixed; });
+      var limit = nextFixed ? nextFixed.s : 24 * 60 - 1;
+      var newEnd = Math.max(b.s + 5, Math.min(b.e + delta, limit));
+      var shift = newEnd - b.e;
+      b.e = newEnd; b.adjusted = (b.adjusted || 0) + shift;
+      if (shift < 0) {
+        for (var j = i + 1; j < blocks.length && !blocks[j].fixed; j++) {
+          var x = blocks[j];
+          x.s += shift;
+          if (x.tick) break;
+          x.e += shift;
+        }
+      } else if (shift > 0) {
+        var cursor = b.e;
+        for (var k = i + 1; k < blocks.length && !blocks[k].fixed; k++) {
+          var y = blocks[k], dur = y.e - y.s;
+          if (y.s >= cursor) break;
+          y.s = cursor; y.e = Math.min(cursor + dur, limit);
+          if (y.e <= y.s) { y.e = y.s; y.squeezed = true; }
+          cursor = y.e;
+        }
+      }
+    }
+    blocks.forEach(function (b) { b.start = hhmm(b.s); if (!b.noEnd) b.end = hhmm(b.e); });
+    return blocks;
   }
 
   function dayStats(plan, day) {
     var ticked = (day && day.ticked) || [];
-    var tickable = plan.blocks.filter(function (b) { return b.tick; });
+    var tickable = plan.blocks.filter(function (b) { return b.tick && !b.opt; });
     var done = tickable.filter(function (b) { return ticked.indexOf(b.id) >= 0; });
-    var has = function (f) { return done.some(f); };
+    var extra = plan.blocks.filter(function (b) { return b.tick && b.opt && ticked.indexOf(b.id) >= 0; });
+    var has = function (f) { return done.some(f) || extra.some(f); };
     return {
       tickable: tickable.length, done: done.length,
       ratio: tickable.length ? done.length / tickable.length : 0,
-      xp: done.reduce(function (a, b) { return a + b.xp; }, 0),
+      xp: done.concat(extra).reduce(function (a, b) { return a + b.xp; }, 0),
       // On a day without a Chinese block (Friday) the minimum run is reading + one lane block.
       minimum: (!tickable.some(function (b) { return b.cat === 'chinese'; }) || has(function (b) { return b.cat === 'chinese' && b.min; }))
         && has(function (b) { return b.cat === 'reading'; }) && has(function (b) { return b.lane; })
@@ -508,7 +555,7 @@ var DR = (function () {
     var tol = Math.max(1, tot * 0.03);
     return { state: cur < expected - tol ? 'behind' : cur > expected + 2 * tol ? 'ahead' : 'on track', expected: expected };
   }
-  return { parse: parse, fmt: fmt, addDays: addDays, diffDays: diffDays, dow: dow, mondayOf: mondayOf, romeNow: romeNow, buildDay: buildDay, dayStats: dayStats, levelFor: levelFor, streak: streak, pace: pace, laneCurrent: laneCurrent, laneCourses: laneCourses, isClassDay: isClassDay, LANE_CATS: LANE_CATS };
+  return { hhmm: hhmm, parse: parse, fmt: fmt, addDays: addDays, diffDays: diffDays, dow: dow, mondayOf: mondayOf, romeNow: romeNow, buildDay: buildDay, dayStats: dayStats, levelFor: levelFor, streak: streak, pace: pace, laneCurrent: laneCurrent, laneCourses: laneCourses, isClassDay: isClassDay, LANE_CATS: LANE_CATS };
 })();
 </script>
 <script id="dr-sync">
@@ -1015,6 +1062,22 @@ var DRSync = (function () {
       if (on && !r.before.minimum && r.after.minimum) say('Minimum run banked. Streak safe.');
       else if (on) say('+' + b.xp + ' XP · ' + b.title.split(' · ')[0]);
     }
+    // "Finished earlier / later" for one day: shifts the rest of that day's plan (see applyAdjust).
+    var adjust = (day && day.adjust) || {};
+    function adjustable(b) { return b.tick && !b.fixed && !b.squeezed; }
+    function setAdjust(b, delta) {
+      lastAction.current = Date.now();
+      var a = Object.assign({}, adjust);
+      if (delta) a[b.id] = delta; else delete a[b.id];
+      saveDay(sel, { adjust: a }, 600);
+    }
+    function adjuster(b) {
+      var v = adjust[b.id] || 0;
+      return html`<div class="adj"><span>Finished at <b class="num">${b.end}</b>${v ? ' (' + (v > 0 ? '+' : '') + v + ' min)' : ''}</span>
+        <button aria-label=${'Finished 5 minutes earlier: ' + b.title} onClick=${function () { setAdjust(b, v - 5); }}>−5 min</button>
+        <button aria-label=${'Finished 5 minutes later: ' + b.title} onClick=${function () { setAdjust(b, v + 5); }}>+5 min</button>
+        ${v ? html`<button class="linkbtn" onClick=${function () { setAdjust(b, 0); }}>Back to plan</button>` : ''}</div>`;
+    }
     function counterDefs() {
       var eng = L.laneCurrent(progress, 'engine'), des = L.laneCurrent(progress, 'design'), ix = progress.ixdf;
       var out = [];
@@ -1129,9 +1192,10 @@ var DRSync = (function () {
                   <div class="now-time num">NOW · ${curB.start}${curB.end ? '–' + curB.end : ''}</div>
                   <div class="now-title">${curB.title}</div>
                   ${curB.sub && html`<div class="now-sub">${curB.sub}</div>`}
-                  ${(curB.detail || curB.link) && html`<div style="display:grid;gap:8px;margin-top:8px">
+                  ${(curB.detail || curB.link || adjustable(curB)) && html`<div style="display:grid;gap:8px;margin-top:8px">
                     ${curB.detail && html`<p class="now-detail">${curB.detail}</p>`}
                     ${curB.link && html`<${GoLink} link=${curB.link}/>`}
+                    ${adjustable(curB) && adjuster(curB)}
                   </div>`}
                 </div>
                 ${curB.tick && html`<button class="tick" aria-pressed=${ticked.indexOf(curB.id) >= 0 ? 'true' : 'false'} aria-label=${(ticked.indexOf(curB.id) >= 0 ? 'Undo ' : 'Tick ') + curB.title} onClick=${function () { toggle(curB); }}>${CHECK}</button>`}
@@ -1147,18 +1211,18 @@ var DRSync = (function () {
               <button class="chipbtn" aria-pressed=${badDay ? 'true' : 'false'} onClick=${function () { lastAction.current = Date.now(); saveDay(sel, { badDay: !badDay }); }}>${badDay ? 'Back to the full plan' : 'Rough day? Go minimum'}</button>
             </div>
             <ol class="tl">
-              ${plan.blocks.map(function (b) {
+              ${plan.blocks.filter(function (b) { return !(b.squeezed && !b.tick); }).map(function (b) {
                 var done = ticked.indexOf(b.id) >= 0, isCur = curB === b, isNext = nextB === b;
                 var cat = CAT[b.cat];
-                var more = !!(b.detail || b.link), oid = sel + ':' + b.id, open = more && openId === oid;
-                var body = html`<span class="blk-title">${isCur && html`<span class="chip chip-now">Now</span>`}${isNext && html`<span class="chip chip-next">Next</span>`}<span>${b.title}</span>${badDay && b.tick && (b.min || b.lane) && html`<span class="chip chip-min">Minimum</span>`}${more && CHEV}</span>
-                    ${b.sub && html`<span class="blk-sub">${b.sub}</span>`}
+                var more = !!(b.detail || b.link || adjustable(b)), oid = sel + ':' + b.id, open = more && openId === oid;
+                var body = html`<span class="blk-title">${isCur && html`<span class="chip chip-now">Now</span>`}${isNext && html`<span class="chip chip-next">Next</span>`}<span>${b.title}</span>${badDay && b.tick && (b.min || b.lane) && html`<span class="chip chip-min">Minimum</span>`}${b.opt && html`<span class="chip chip-opt">Optional</span>`}${more && CHEV}</span>
+                    ${b.squeezed ? html`<span class="blk-sub">No time left here today. Catch up after work if you need to.</span>` : b.sub && html`<span class="blk-sub">${b.sub}</span>`}
                     ${b.tick && html`<span class="blk-meta"><span class="dot" style=${'--cat:' + (cat ? cat[1] : 'var(--muted)')}></span>${cat ? cat[0] : ''} · <span class="num">+${b.xp} XP</span></span>`}`;
                 return html`<li key=${b.id} class=${'blk' + (b.tick ? '' : ' muted') + (isCur ? ' is-now' : '') + (done ? ' done' : '') + (dimFor(b) ? ' dim' : '')}>
                   <div class="blk-time num"><span>${b.start}</span>${b.end && html`<span class="end">${b.end}</span>`}</div>
                   <div style="min-width:0">
                     ${more ? html`<button class="blk-main" aria-expanded=${open ? 'true' : 'false'} aria-controls=${'det-' + b.id} onClick=${function () { setOpenId(open ? null : oid); }}>${body}</button>` : body}
-                    ${open && html`<div class="blk-detail" id=${'det-' + b.id}>${b.detail && html`<p>${b.detail}</p>`}${b.link && html`<${GoLink} link=${b.link}/>`}</div>`}
+                    ${open && html`<div class="blk-detail" id=${'det-' + b.id}>${b.detail && html`<p>${b.detail}</p>`}${b.link && html`<${GoLink} link=${b.link}/>`}${adjustable(b) && adjuster(b)}</div>`}
                   </div>
                   ${b.tick ? html`<button class="tick" aria-pressed=${done ? 'true' : 'false'} aria-label=${(done ? 'Undo ' : 'Tick ') + b.title} onClick=${function () { toggle(b); }}>${CHECK}</button>` : html`<span class="tick-spacer"></span>`}
                 </li>`;
