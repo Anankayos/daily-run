@@ -353,15 +353,25 @@ var DR = (function () {
     var ixDetail = ixNext ? 'Up next in the program: ' + ixNext + '.' : '';
     var engSub = eng.c ? courseSub(eng.c) : eng.name === 'DBGA final project' ? 'Second-year final project' : '';
     var oneLine = 'Finish with one line: where you stopped and the next step.';
-    var engDetail = eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine;
+    // When a course is behind its pace, name the lecture (or lesson) that would be on track for this day.
+    var behind = function (c) {
+      if (!c || c.unit === 'items') return '';
+      var p = pace(c, d);
+      if (p.state !== 'behind') return '';
+      var unit = c.unit === 'weeks' ? 'week' : c.unit === 'lessons' ? 'lesson' : 'lecture';
+      return ' Behind pace: to be on track you should be at ' + unit + ' ' + Math.min(c.total, Math.ceil(p.expected) + 1) + ' of ' + c.total
+        + ' today (you are on ' + unit + ' ' + Math.min(c.total, (c.current || 0) + 1) + ').';
+    };
+    var engDetail = (eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine) + behind(eng.c);
     var chStart = cfg.alternationStart || '2026-10-19';
     var chTomorrow = ch.type === 'revision' ? '' : diffDays(chStart, addDays(d, 1)) % 2 === 0 ? 'Tomorrow is a book day.' : 'Tomorrow is a Udemy day.';
     var chDetail = ch.type === 'hsk' ? 'Textbook first, then the workbook: one lesson every two book days. ' + chTomorrow
       : ch.type === 'udemy' ? 'Pick up at your next lecture in the course player. ' + chTomorrow
       : 'Go back over HSK 1 and 2 vocabulary and grammar.';
+    chDetail += ch.type === 'hsk' ? behind(hsk) : ch.type === 'udemy' ? behind(udemy) : '';
     var chinese = function (s, e) { return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null }); };
     var reading = B('21:30', '22:00', 'reading', 'Reading', { cat: 'reading', sub: 'Paper book + 2-minute plan for tomorrow', min: true, detail: 'On a rough day, 10 pages count. Then two minutes on tomorrow: where you stopped and the first step.' });
-    var designDetail = 'Lecture-style, so it also works on the train. Its theme feeds the Design Lab play session.';
+    var designDetail = 'Lecture-style, so it also works on the train. Its theme feeds the Design Lab play session.' + behind(des);
     var sleep = B('22:00', '23:59', 'sleep', 'Sleep', { endLabel: '' });
     var kind, blocks, evening = null;
 
@@ -385,7 +395,7 @@ var DR = (function () {
         blocks = morning.concat([
           B('09:30', '12:45', 'lqa1', 'LQA work'),
           B('12:45', '13:26', 'lunch', 'Lunch, walk to the station'),
-          des ? B('13:26', '14:26', 'trainout', 'Train out · design lane', { cat: 'design', sub: des.name + ', downloaded in the Udemy app', detail: 'Download the next lectures in the Udemy app before you leave home.', link: courseLink(des) })
+          des ? B('13:26', '14:26', 'trainout', 'Train out · design lane', { cat: 'design', sub: des.name + ', downloaded in the Udemy app', detail: 'Download the next lectures in the Udemy app before you leave home.' + behind(des), link: courseLink(des) })
               : B('13:26', '14:26', 'trainout', 'Train out · IxDF', { cat: 'ixdf', sub: ixSub, detail: ixDetail, link: courseLink(ix) }),
           B('14:00', '18:00', 'dbga', 'DBGA class', { cat: 'dbga', flat: 20, sub: 'Second year · 14:00–18:00' }),
           B('18:26', '19:26', 'trainback', 'Train back · IxDF or a book', { cat: 'ixdf', sub: ixSub, detail: 'IxDF reading or your book. Home about 19:30.', link: courseLink(ix) }),
@@ -419,7 +429,7 @@ var DR = (function () {
       var seasonBlock = hol ? B('14:45', '16:45', 'season', 'No Saturday season', { sub: 'Holiday break' })
         : B('14:45', '16:45', 'season', 'Saturday season · ' + (season ? season.label : 'open slot'), { cat: season && season.lane ? season.lane : 'engine', sub: season && season.note ? season.note : '',
           detail: season && season.goal ? 'Goal by ' + dm(season.to) + ': ' + season.goal + '.' : '', link: seasonLink });
-      var designSession = des ? { detail: 'Exercises from ' + des.name + ", then write this week's Design Lab note.", link: courseLink(des) }
+      var designSession = des ? { detail: 'Exercises from ' + des.name + ", then write this week's Design Lab note." + behind(des), link: courseLink(des) }
         : { detail: "IxDF exercises, then write this week's Design Lab note.", link: courseLink(ix) };
       blocks = [
         B('10:30', '10:45', 'wake', 'Wake up, breakfast'),
@@ -445,7 +455,7 @@ var DR = (function () {
         B('11:45', '13:00', 'spare', 'Spare slot', { cat: 'spare', sub: 'Whatever slipped this week', detail: 'If the Gigcrawler team needs more time, it can take this slot.' }),
         B('13:00', '14:00', 'workout', 'Workout', { cat: 'health' }),
         B('14:00', '15:00', 'lunch', 'Shower, lunch'),
-        B('15:00', '17:00', 'enginecatchup', 'Engine lane catch-up · ' + eng.name, { cat: 'engine', sub: engSub, detail: 'Whatever the weekday mornings missed. ' + oneLine, link: courseLink(eng.c) }),
+        B('15:00', '17:00', 'enginecatchup', 'Engine lane catch-up · ' + eng.name, { cat: 'engine', sub: engSub, detail: 'Whatever the weekday mornings missed. ' + oneLine + behind(eng.c), link: courseLink(eng.c) }),
         B('17:00', '17:30', 'review', 'Weekly review', { cat: 'review', detail: "Log the lectures done in each lane, then place next week's free evenings around the DBGA calendar. On the month's last Sunday, compare actual and planned lectures and slide dates if needed." }),
         B('17:30', '21:30', 'off', 'Off'),
         reading, sleep
