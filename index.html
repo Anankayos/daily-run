@@ -288,7 +288,7 @@ var DR = (function () {
     if (day && day.chineseOverride && day.chineseType) return { type: day.chineseType, override: true };
     var start = cfg.alternationStart || '2026-10-19';
     if (d < start) return { type: 'revision', override: false };
-    return { type: diffDays(start, d) % 2 === 0 ? 'hsk' : 'udemy', override: false };
+    return { type: diffDays(start, d) % 2 === 0 ? 'udemy' : 'hsk', override: false };
   }
   function laneCourses(progress, lane) {
     return Object.keys(progress).map(function (k) { return progress[k]; })
@@ -397,15 +397,15 @@ var DR = (function () {
         kind = w === 5 ? 'friday' : 'regular';
         blocks = morning.concat([
           B('09:30', '13:00', 'lqa1', 'LQA work'),
-          B('13:00', '14:00', 'lunch', 'Lunch'),
-          B('14:00', '18:00', 'lqa2', 'LQA work'),
+          B('13:00', '13:30', 'lunch', 'Lunch'),
+          B('13:30', '18:00', 'lqa2', 'LQA work'),
           B('18:00', '18:30', 'walk', 'Walk outside', { cat: 'health', sub: 'No screens', detail: 'It marks the end of work at home.' })
         ]);
         if (w === 5) {
           blocks.push(B('18:30', '21:30', 'gamenight', 'Game night with friends', { detail: "If it runs past 22:00, skip tomorrow's first block, never the sleep." }));
         } else {
           evening = eveningSlot(d, cfg);
-          blocks.push(B('18:30', '20:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: "Design work for the team. In a two-class week it drops to about 5.5h; if the team needs more, it takes Sunday's spare slot." }));
+          blocks.push(B('18:30', '20:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: "Design work for the team. If the team needs more time, it takes Sunday's spare slot." }));
           blocks.push(B('20:00', '20:45', 'dinner', 'Dinner'));
           if (evening === 'designlab') blocks.push(B('20:45', '21:30', 'evening', 'Design Lab play session', { cat: 'designlab', sub: 'First free evening of the week', detail: 'Critical analysis plus old lessons, themed on ' + (des ? LAB_THEME[des.id] || 'the design lane' : 'UX and AI') + '.' }));
           else if (evening === 'wow') blocks.push(B('20:45', '21:30', 'evening', 'WoW D&D campaign', { cat: 'leisure', sub: '45-minute hard stop', detail: 'Ideas in between go into one note. Build session 1 plus a one-page world summary, nothing more for now.' }));
@@ -416,40 +416,38 @@ var DR = (function () {
     } else if (w === 6) {
       kind = 'saturday';
       var seasonLink = season && season.lane === 'engine' ? courseLink(eng.c) : season && season.lane === 'chinese' ? courseLink(udemy) : null;
-      var seasonBlock = hol ? B('14:00', '16:00', 'season', 'No Saturday season', { sub: 'Holiday break' })
-        : B('14:00', '16:00', 'season', 'Saturday season · ' + (season ? season.label : 'open slot'), { cat: season && season.lane ? season.lane : 'engine', sub: season && season.note ? season.note : '',
+      var seasonBlock = hol ? B('14:45', '16:45', 'season', 'No Saturday season', { sub: 'Holiday break' })
+        : B('14:45', '16:45', 'season', 'Saturday season · ' + (season ? season.label : 'open slot'), { cat: season && season.lane ? season.lane : 'engine', sub: season && season.note ? season.note : '',
           detail: season && season.goal ? 'Goal by ' + dm(season.to) + ': ' + season.goal + '.' : '', link: seasonLink });
       var designSession = des ? { detail: 'Exercises from ' + des.name + ", then write this week's Design Lab note.", link: courseLink(des) }
         : { detail: "IxDF exercises, then write this week's Design Lab note.", link: courseLink(ix) };
       blocks = [
-        B('08:00', '08:10', 'wake', 'Wake up'),
-        B('08:10', '09:10', 'workout', 'Workout', { cat: 'health' }),
-        B('09:10', '09:25', 'breakfast', 'Shower, breakfast'),
-        chinese('09:25', '10:15'),
-        B('10:15', '10:30', 'break1', 'Break'),
-        B('10:30', '13:00', 'gigcrawler', 'Gigcrawler · long session', { cat: 'gigcrawler', detail: 'The longest Gigcrawler block of the week.' }),
-        B('13:00', '14:00', 'lunch', 'Lunch'),
+        B('10:30', '10:45', 'wake', 'Wake up, breakfast'),
+        chinese('10:45', '11:35'),
+        B('11:35', '11:45', 'break1', 'Break'),
+        B('11:45', '13:00', 'gigcrawler', 'Gigcrawler', { cat: 'gigcrawler', detail: 'Weekend Gigcrawler block, before the workout.' }),
+        B('13:00', '14:00', 'workout', 'Workout', { cat: 'health' }),
+        B('14:00', '14:45', 'lunch', 'Shower, lunch'),
         seasonBlock,
-        B('16:00', '16:30', 'break2', 'Break'),
-        B('16:30', '18:30', 'designsession', 'Design session', { cat: 'design', sub: "Course exercises + this week's Design Lab note", detail: designSession.detail, link: designSession.link }),
-        B('18:30', '18:45', 'break3', 'Break'),
-        B('18:45', '20:15', 'dbgahw', 'DBGA homework', { cat: 'dbga' }),
-        B('20:15', '21:30', 'free', 'Free'),
+        B('16:45', '17:00', 'break2', 'Break'),
+        B('17:00', '18:30', 'designsession', 'Design session', { cat: 'design', sub: "Course exercises + this week's Design Lab note", detail: designSession.detail, link: designSession.link }),
+        B('18:30', '19:15', 'dinner', 'Dinner'),
+        B('19:15', '20:45', 'dbgahw', 'DBGA homework', { cat: 'dbga' }),
+        B('20:45', '21:30', 'free', 'Free'),
         reading, sleep
       ];
     } else {
       kind = 'sunday';
       blocks = [
-        B('08:00', '08:10', 'wake', 'Wake up'),
-        B('08:10', '09:10', 'workout', 'Workout', { cat: 'health' }),
-        B('09:10', '09:25', 'breakfast', 'Shower, breakfast'),
-        chinese('09:25', '10:15'),
-        B('10:15', '10:30', 'break1', 'Break'),
-        B('10:30', '12:30', 'enginecatchup', 'Engine lane catch-up · ' + eng.name, { cat: 'engine', sub: engSub, detail: 'Whatever the weekday mornings missed. ' + oneLine, link: courseLink(eng.c) }),
-        B('12:30', '14:00', 'lunch', 'Lunch'),
-        B('14:00', '15:30', 'spare', 'Spare slot', { cat: 'spare', sub: 'Whatever slipped this week', detail: 'In a two-class week, Gigcrawler can take this slot.' }),
-        B('15:30', '16:00', 'review', 'Weekly review', { cat: 'review', detail: "Log the lectures done in each lane, then place next week's free evenings around the DBGA calendar. On the month's last Sunday, compare actual and planned lectures and slide dates if needed." }),
-        B('16:00', '21:30', 'off', 'Off'),
+        B('10:30', '10:45', 'wake', 'Wake up, breakfast'),
+        chinese('10:45', '11:35'),
+        B('11:35', '11:45', 'break1', 'Break'),
+        B('11:45', '13:00', 'spare', 'Spare slot', { cat: 'spare', sub: 'Whatever slipped this week', detail: 'If the Gigcrawler team needs more time, it can take this slot.' }),
+        B('13:00', '14:00', 'workout', 'Workout', { cat: 'health' }),
+        B('14:00', '15:00', 'lunch', 'Shower, lunch'),
+        B('15:00', '17:00', 'enginecatchup', 'Engine lane catch-up · ' + eng.name, { cat: 'engine', sub: engSub, detail: 'Whatever the weekday mornings missed. ' + oneLine, link: courseLink(eng.c) }),
+        B('17:00', '17:30', 'review', 'Weekly review', { cat: 'review', detail: "Log the lectures done in each lane, then place next week's free evenings around the DBGA calendar. On the month's last Sunday, compare actual and planned lectures and slide dates if needed." }),
+        B('17:30', '21:30', 'off', 'Off'),
         reading, sleep
       ];
     }
@@ -1152,7 +1150,7 @@ var DRSync = (function () {
           <section class="panel" aria-label="Chinese today">
             <div class="panel-head"><h2>Chinese today</h2>${plan.chinese.override && html`<button class="linkbtn" onClick=${function () { saveDay(sel, { chineseOverride: false }); }}>Back to schedule</button>`}</div>
             ${plan.chinese.type === 'revision' && !plan.chinese.override
-              ? html`<p class="empty" style="margin:0 0 10px">Revision week. Alternation starts Mon 19 Oct with the HSK 2 books.</p>` : ''}
+              ? html`<p class="empty" style="margin:0 0 10px">Revision week. Alternation starts Mon 19 Oct with the Udemy course.</p>` : ''}
             <div class="row">
               <div class="seg" role="group" aria-label="Chinese session type">
                 <button aria-pressed=${plan.chinese.type === 'hsk' ? 'true' : 'false'} onClick=${function () { saveDay(sel, { chineseOverride: true, chineseType: 'hsk' }); }}>HSK 2 books</button>
