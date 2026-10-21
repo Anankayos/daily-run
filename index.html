@@ -132,6 +132,8 @@ h2 { font: 600 17px/1.2 var(--f-display); letter-spacing: .01em; }
 .blk.is-now { background: var(--red-soft); border-radius: 8px; border-top-color: transparent; }
 .blk.is-now + .blk { border-top-color: transparent; }
 .blk.dim { opacity: .45; }
+.blk.off { opacity: .45; }
+.blk.off .blk-title { text-decoration: line-through; font-weight: 400; }
 .blk.done .blk-title { color: var(--muted); }
 .blk-main { display: block; position: relative; width: 100%; text-align: left; border: 0; background: none; padding: 0 22px 0 0; cursor: pointer; border-radius: 6px; }
 .blk-sub { display: block; }
@@ -479,7 +481,16 @@ var DR = (function () {
         reading, sleep
       ];
     }
-    return { date: d, kind: kind, blocks: applyAdjust(blocks, day && day.adjust), chinese: ch, cls: cls, hol: hol, season: season, evening: evening };
+    blocks = applyAdjust(blocks, day && day.adjust);
+    // Sick day: everything from offFrom on is called off (not tickable, not counted); sleep stays.
+    if (day && day.offFrom) {
+      var off = hm(day.offFrom);
+      blocks = blocks.map(function (b) {
+        if (b.id === 'sleep' || b.e <= off) return b;
+        return Object.assign({}, b, { off: true, tick: false, min: false, lane: false, xp: 0, sub: 'Called off: rest' });
+      });
+    }
+    return { date: d, kind: kind, blocks: blocks, sick: !!(day && day.sick), chinese: ch, cls: cls, hol: hol, season: season, evening: evening };
   }
 
   // Per-day manual adjustments: adjust[blockId] = minutes the block ended later (+) or earlier (-) than planned.
@@ -530,7 +541,8 @@ var DR = (function () {
       ratio: tickable.length ? done.length / tickable.length : 0,
       xp: done.concat(extra).reduce(function (a, b) { return a + b.xp; }, 0),
       // On a day without a Chinese block (Friday) the minimum run is reading + one lane block.
-      minimum: (!tickable.some(function (b) { return b.cat === 'chinese'; }) || has(function (b) { return b.cat === 'chinese' && b.min; }))
+      // A sick day counts as met, so resting never breaks the streak.
+      minimum: plan.sick ? true : (!tickable.some(function (b) { return b.cat === 'chinese'; }) || has(function (b) { return b.cat === 'chinese' && b.min; }))
         && has(function (b) { return b.cat === 'reading'; }) && has(function (b) { return b.lane; })
     };
   }
@@ -1129,6 +1141,7 @@ var DRSync = (function () {
     if (plan.cls) banners.push(html`<div class="banner red"><${Info}/><span><b>DBGA class day, 14:00–18:00.</b> Morning as usual, design lectures on the train, rest in the evening.</span></div>`);
     if (plan.hol) banners.push(html`<div class="banner warn"><${Info}/><span><b>${plan.hol.label || 'Holidays'}.</b> ${plan.hol.note || 'Half pace. The minimum run is a full win.'}</span></div>`);
     if (plan.kind === 'saturday' && plan.season && !plan.hol) banners.push(html`<div class="banner"><${Info}/><span><b>Saturday season: ${plan.season.label}.</b> ${dm(plan.season.from)} – ${dm(plan.season.to)}${plan.season.goal ? ' · ' + plan.season.goal : plan.season.note ? ' · ' + plan.season.note : ''}</span></div>`);
+    if (plan.sick) banners.push(html`<div class="banner good"><${Info}/><span><b>Sick day: rest.</b> ${day && day.offFrom && day.offFrom !== '00:00' ? 'Everything from ' + day.offFrom + ' is called off.' : 'The whole day is called off.'} What you already ticked still counts, and your streak is safe.</span></div>`);
     if (badDay) banners.push(html`<div class="banner warn"><${Info}/><span><b>Minimum run today.</b> ${plan.chinese.type === 'none' ? 'Reading' : 'Chinese, reading'} and one lane block. That counts as a full day for your streak.</span></div>`);
     if (st.minimum) banners.push(html`<div class="banner good"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="var(--good)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Minimum run banked.</b> ${isToday ? 'Streak safe for today.' : 'This day counts for the streak.'}</span></div>`);
     if (sync.state === 'error') banners.push(html`<div class="banner red"><${Info}/><span><b>Sync stopped.</b> ${sync.error} Your changes stay on this device until it works again. <button class="linkbtn" onClick=${DRSync.openSettings}>Open sync settings</button></span></div>`);
@@ -1208,7 +1221,13 @@ var DRSync = (function () {
           <section class="panel" aria-label="Day plan">
             <div class="daysum">
               <div class="daysum-stats"><${Ring} ratio=${st.ratio} size=${40}/><div><b class="num">${st.done}/${st.tickable}</b> <span class="empty">blocks</span><div class="eyebrow">${{ regular: 'Regular weekday', friday: 'Friday', class: 'DBGA class day', saturday: 'Saturday', sunday: 'Sunday' }[plan.kind]}</div></div></div>
-              <button class="chipbtn" aria-pressed=${badDay ? 'true' : 'false'} onClick=${function () { lastAction.current = Date.now(); saveDay(sel, { badDay: !badDay }); }}>${badDay ? 'Back to the full plan' : 'Rough day? Go minimum'}</button>
+              <span style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="chipbtn" aria-pressed=${plan.sick ? 'true' : 'false'} onClick=${function () {
+                lastAction.current = Date.now();
+                if (plan.sick) saveDay(sel, { sick: false, offFrom: null });
+                else saveDay(sel, { sick: true, offFrom: isToday ? L.hhmm(Math.floor(now.min / 5) * 5) : '00:00' });
+              }}>${plan.sick ? 'Back to the plan' : 'Sick? Stop for today'}</button>
+              <button class="chipbtn" aria-pressed=${badDay ? 'true' : 'false'} onClick=${function () { lastAction.current = Date.now(); saveDay(sel, { badDay: !badDay }); }}>${badDay ? 'Back to the full plan' : 'Rough day? Go minimum'}</button></span>
             </div>
             <ol class="tl">
               ${plan.blocks.filter(function (b) { return !(b.squeezed && !b.tick); }).map(function (b) {
@@ -1218,7 +1237,7 @@ var DRSync = (function () {
                 var body = html`<span class="blk-title">${isCur && html`<span class="chip chip-now">Now</span>`}${isNext && html`<span class="chip chip-next">Next</span>`}<span>${b.title}</span>${badDay && b.tick && (b.min || b.lane) && html`<span class="chip chip-min">Minimum</span>`}${b.opt && html`<span class="chip chip-opt">Optional</span>`}${more && CHEV}</span>
                     ${b.squeezed ? html`<span class="blk-sub">No time left here today. Catch up after work if you need to.</span>` : b.sub && html`<span class="blk-sub">${b.sub}</span>`}
                     ${b.tick && html`<span class="blk-meta"><span class="dot" style=${'--cat:' + (cat ? cat[1] : 'var(--muted)')}></span>${cat ? cat[0] : ''} · <span class="num">+${b.xp} XP</span></span>`}`;
-                return html`<li key=${b.id} class=${'blk' + (b.tick ? '' : ' muted') + (isCur ? ' is-now' : '') + (done ? ' done' : '') + (dimFor(b) ? ' dim' : '')}>
+                return html`<li key=${b.id} class=${'blk' + (b.tick ? '' : ' muted') + (isCur ? ' is-now' : '') + (done ? ' done' : '') + (dimFor(b) ? ' dim' : '') + (b.off ? ' off' : '')}>
                   <div class="blk-time num"><span>${b.start}</span>${b.end && html`<span class="end">${b.end}</span>`}</div>
                   <div style="min-width:0">
                     ${more ? html`<button class="blk-main" aria-expanded=${open ? 'true' : 'false'} aria-controls=${'det-' + b.id} onClick=${function () { setOpenId(open ? null : oid); }}>${body}</button>` : body}
