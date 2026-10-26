@@ -296,6 +296,12 @@ var DR = (function () {
   function chineseFor(d, day, cfg) {
     var start = cfg.alternationStart || '2026-10-19', w = dow(d);
     if (d < start) return { type: 'revision', override: false };
+    // Exam prep (cfg.chineseExam): every Chinese session until the exam studies for it; Udemy and the HSK 2 books wait.
+    var ex = cfg.chineseExam;
+    if (ex && d >= ex.prepFrom && d <= ex.date) {
+      if (d === ex.date) return { type: 'exam', override: false };
+      if (w !== 5) return { type: 'prep', override: false };
+    }
     if (w === 5) return { type: 'none', override: false };
     if (w === 0 || w === 6) return { type: 'review', override: false };
     if (day && day.chineseOverride && (day.chineseType === 'hsk' || day.chineseType === 'udemy')) return { type: day.chineseType, override: true };
@@ -307,7 +313,9 @@ var DR = (function () {
       .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
   }
   function laneCurrent(progress, lane) {
-    return laneCourses(progress, lane).find(function (c) { return (c.current || 0) < (c.total || 0); }) || null;
+    // resumeAfter: a frozen course waits until that other course is finished.
+    var waiting = function (c) { var r = c.resumeAfter && progress[c.resumeAfter]; return !!r && (r.current || 0) < (r.total || 0); };
+    return laneCourses(progress, lane).find(function (c) { return (c.current || 0) < (c.total || 0) && !waiting(c); }) || null;
   }
   function engineFor(d, progress, cfg) {
     if (d >= (cfg.finalProjectFrom || '2027-02-01')) return { name: 'DBGA final project', c: null };
@@ -355,10 +363,13 @@ var DR = (function () {
     var ch = chineseFor(d, day, cfg), eng = engineFor(d, progress, cfg), des = laneCurrent(progress, 'design');
     var ix = progress.ixdf, hsk = progress.hsk2, udemy = progress['chinese-udemy'];
     var chTitle = ch.type === 'hsk' ? 'Chinese · HSK 2 books' : ch.type === 'udemy' ? 'Chinese · Udemy course'
-      : ch.type === 'review' ? 'Chinese · weekly review' : 'Chinese · revision week';
+      : ch.type === 'review' ? 'Chinese · weekly review' : ch.type === 'prep' ? 'Chinese · ' + cfg.chineseExam.label + ' prep'
+      : ch.type === 'exam' ? cfg.chineseExam.label : 'Chinese · revision week';
     var chSub = ch.type === 'hsk' ? 'Textbook + workbook' + (hsk ? ' · ' + courseSub(hsk) : '')
       : ch.type === 'udemy' ? 'From Zero to Chinese Hero' + (udemy ? ' · ' + courseSub(udemy) : '')
       : ch.type === 'review' ? "This week's new words and grammar"
+      : ch.type === 'prep' ? 'Exam on ' + dm(cfg.chineseExam.date) + ' · ' + diffDays(d, cfg.chineseExam.date) + (diffDays(d, cfg.chineseExam.date) === 1 ? ' day' : ' days') + ' to go'
+      : ch.type === 'exam' ? 'Exam day: check the time and place, bring your ID'
       : 'Review HSK 1 and 2 before the books resume on 19 Oct';
     var ixTitle = 'IxDF';
     var ixSub = ix ? (ix.courseName || 'Current course') + ' · ' + (ix.coursePct || 0) + '%' : '';
@@ -377,11 +388,13 @@ var DR = (function () {
     };
     var engDetail = (eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine) + behind(eng.c);
     var chNext = chineseFor(addDays(d, 1), null, cfg).type;
-    var chTomorrow = { udemy: 'Tomorrow is a Udemy day.', hsk: 'Tomorrow is a book day.', none: 'No Chinese tomorrow (Friday).', review: 'Tomorrow is the weekend review.' }[chNext] || '';
+    var chTomorrow = { udemy: 'Tomorrow is a Udemy day.', hsk: 'Tomorrow is a book day.', none: 'No Chinese tomorrow (Friday).', review: 'Tomorrow is the weekend review.', prep: 'Tomorrow is exam prep too.', exam: 'Tomorrow is the exam.' }[chNext] || '';
     var chDetail = ch.type === 'hsk' ? 'Textbook first, then the workbook: one lesson every two book days. ' + chTomorrow
       : ch.type === 'udemy' ? 'Pick up at your next lecture in the course player; this session runs until 07:30. ' + chTomorrow
       : ch.type === 'review' ? "Go back over the new words and grammar from this week's Udemy lectures and HSK 2 lessons."
       : 'Go back over HSK 1 and 2 vocabulary and grammar.';
+    if (ch.type === 'prep') chDetail = 'Go over HSK 1 vocabulary and grammar, then listening and reading practice; do a timed mock test once or twice before the day. The Udemy course and the HSK 2 books are paused until after the exam. ' + chTomorrow;
+    if (ch.type === 'exam') chDetail = 'You prepared for this. Afterwards the Udemy course and the HSK 2 books pick up where you left them.';
     chDetail += ch.type === 'hsk' ? behind(hsk) : ch.type === 'udemy' ? behind(udemy) : '';
     var chinese = function (s, e) { return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null }); };
     var reading = B('21:30', '22:00', 'reading', 'Reading', { cat: 'reading', sub: 'Paper book + 2-minute plan for tomorrow', min: true, detail: 'On a rough day, 10 pages count. Then two minutes on tomorrow: where you stopped and the first step.' });
@@ -1256,6 +1269,8 @@ var DRSync = (function () {
             ${plan.chinese.type === 'revision' ? html`<p class="empty" style="margin:0">Revision week. From Mon 19 Oct: Udemy on Mon and Wed, HSK 2 books on Tue and Thu.</p>`
               : plan.chinese.type === 'none' ? html`<p class="empty" style="margin:0">No Chinese on Fridays. The engine lane starts at 05:55 instead.</p>`
               : plan.chinese.type === 'review' ? html`<p class="empty" style="margin:0">Weekend review: go back over this week's new words and grammar.</p>`
+              : plan.chinese.type === 'prep' ? html`<p class="empty" style="margin:0">${cfg.chineseExam.label} prep until ${dm(cfg.chineseExam.date)}. The Udemy course and the HSK 2 books are paused and pick up again after the exam.</p>`
+              : plan.chinese.type === 'exam' ? html`<p class="empty" style="margin:0">${cfg.chineseExam.label} today. Good luck!</p>`
               : html`<div class="row">
               <div class="seg" role="group" aria-label="Chinese session type">
                 <button aria-pressed=${plan.chinese.type === 'hsk' ? 'true' : 'false'} onClick=${function () { saveDay(sel, { chineseOverride: true, chineseType: 'hsk' }); }}>HSK 2 books</button>
