@@ -303,6 +303,9 @@ var DR = (function () {
       if (w !== 5) return { type: 'prep', override: false };
     }
     if (w === 5) return { type: 'none', override: false };
+    // Chinese pause (cfg.chinesePause): the Chinese slot goes to the design-lane Udemy course instead.
+    var cp = cfg.chinesePause;
+    if (cp && d >= cp.from && d <= cp.to) return { type: 'pause', override: false };
     if (w === 0 || w === 6) return { type: 'review', override: false };
     if (day && day.chineseOverride && (day.chineseType === 'hsk' || day.chineseType === 'udemy')) return { type: day.chineseType, override: true };
     return { type: w === 1 || w === 3 ? 'udemy' : 'hsk', override: false };
@@ -320,6 +323,13 @@ var DR = (function () {
   function engineFor(d, progress, cfg) {
     if (d >= (cfg.finalProjectFrom || '2027-02-01')) return { name: 'DBGA final project', c: null };
     var c = laneCurrent(progress, 'engine');
+    // Alternation (cfg.engineAlternation): from `from`, the engine slot flips day by day between two courses.
+    var alt = cfg.engineAlternation;
+    if (alt && d >= alt.from && alt.courses && alt.courses.length === 2) {
+      var open = function (id) { var x = progress[id]; return x && x.status !== 'parked' && (x.current || 0) < (x.total || 0) ? x : null; };
+      var pick = open(alt.courses[diffDays(alt.from, d) % 2]) || open(alt.courses[0]) || open(alt.courses[1]);
+      if (pick) c = pick;
+    }
     return c ? { name: c.name, c: c } : { name: 'Engine lane', c: null };
   }
   // 20:45–21:30 on Mon–Thu: Design Lab Monday, the one free evening Tuesday, optional design catch-up Wednesday, IxDF Thursday.
@@ -364,12 +374,13 @@ var DR = (function () {
     var ix = progress.ixdf, hsk = progress.hsk2, udemy = progress['chinese-udemy'];
     var chTitle = ch.type === 'hsk' ? 'Chinese · HSK 2 books' : ch.type === 'udemy' ? 'Chinese · Udemy course'
       : ch.type === 'review' ? 'Chinese · weekly review' : ch.type === 'prep' ? 'Chinese · ' + cfg.chineseExam.label + ' prep'
-      : ch.type === 'exam' ? cfg.chineseExam.label : 'Chinese · revision week';
+      : ch.type === 'exam' ? cfg.chineseExam.label : ch.type === 'pause' ? 'Udemy slot · ' + (des ? des.name : 'IxDF') : 'Chinese · revision week';
     var chSub = ch.type === 'hsk' ? 'Textbook + workbook' + (hsk ? ' · ' + courseSub(hsk) : '')
       : ch.type === 'udemy' ? 'From Zero to Chinese Hero' + (udemy ? ' · ' + courseSub(udemy) : '')
       : ch.type === 'review' ? "This week's new words and grammar"
       : ch.type === 'prep' ? 'Exam on ' + dm(cfg.chineseExam.date) + ' · ' + diffDays(d, cfg.chineseExam.date) + (diffDays(d, cfg.chineseExam.date) === 1 ? ' day' : ' days') + ' to go'
       : ch.type === 'exam' ? 'Exam day: check the time and place, bring your ID'
+      : ch.type === 'pause' ? 'Chinese is paused until ' + dm(addDays(cfg.chinesePause.to, 1)) + (des ? ' · ' + courseSub(des) : '')
       : 'Review HSK 1 and 2 before the books resume on 19 Oct';
     var ixTitle = 'IxDF';
     var ixSub = ix ? (ix.courseName || 'Current course') + ' · ' + (ix.coursePct || 0) + '%' : '';
@@ -388,15 +399,19 @@ var DR = (function () {
     };
     var engDetail = (eng.c ? 'Hands-on, at the desk. ' + oneLine : oneLine) + behind(eng.c);
     var chNext = chineseFor(addDays(d, 1), null, cfg).type;
-    var chTomorrow = { udemy: 'Tomorrow is a Udemy day.', hsk: 'Tomorrow is a book day.', none: 'No Chinese tomorrow (Friday).', review: 'Tomorrow is the weekend review.', prep: 'Tomorrow is exam prep too.', exam: 'Tomorrow is the exam.' }[chNext] || '';
+    var chTomorrow = { udemy: 'Tomorrow is a Udemy day.', hsk: 'Tomorrow is a book day.', none: 'No Chinese tomorrow (Friday).', review: 'Tomorrow is the weekend review.', prep: 'Tomorrow is exam prep too.', pause: 'Tomorrow is a Udemy slot too.', exam: 'Tomorrow is the exam.' }[chNext] || '';
     var chDetail = ch.type === 'hsk' ? 'Textbook first, then the workbook: one lesson every two book days. ' + chTomorrow
       : ch.type === 'udemy' ? 'Pick up at your next lecture in the course player; this session runs until 07:30. ' + chTomorrow
       : ch.type === 'review' ? "Go back over the new words and grammar from this week's Udemy lectures and HSK 2 lessons."
       : 'Go back over HSK 1 and 2 vocabulary and grammar.';
     if (ch.type === 'prep') chDetail = 'Go over HSK 1 vocabulary and grammar, then listening and reading practice; do a timed mock test once or twice before the day. The Udemy course and the HSK 2 books are paused until after the exam. ' + chTomorrow;
+    if (ch.type === 'pause') chDetail = 'Chinese is on pause this week, so this slot goes to the Udemy design course. Pick up at your next lecture in the course player.' + behind(des);
     if (ch.type === 'exam') chDetail = 'You prepared for this. Afterwards the Udemy course and the HSK 2 books pick up where you left them.';
     chDetail += ch.type === 'hsk' ? behind(hsk) : ch.type === 'udemy' ? behind(udemy) : '';
-    var chinese = function (s, e) { return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null }); };
+    var chinese = function (s, e) {
+      if (ch.type === 'pause') return B(s, e, 'udemyslot', chTitle, { cat: des ? 'design' : 'ixdf', sub: chSub, detail: chDetail, link: courseLink(des || ix) });
+      return B(s, e, 'chinese', chTitle, { cat: 'chinese', sub: chSub, min: true, detail: chDetail, link: ch.type === 'udemy' ? courseLink(udemy) : null });
+    };
     var reading = B('21:30', '22:00', 'reading', 'Reading', { cat: 'reading', sub: 'Paper book + 2-minute plan for tomorrow', min: true, detail: 'On a rough day, 10 pages count. Then two minutes on tomorrow: where you stopped and the first step.' });
     var designDetail = 'Lecture-style, so it also works on the train. Its theme feeds the Design Lab play session.' + behind(des);
     var sleep = B('22:00', '23:59', 'sleep', 'Sleep', { endLabel: '', fixed: true });
@@ -580,7 +595,7 @@ var DR = (function () {
     var tol = Math.max(1, tot * 0.03);
     return { state: cur < expected - tol ? 'behind' : cur > expected + 2 * tol ? 'ahead' : 'on track', expected: expected };
   }
-  return { hhmm: hhmm, parse: parse, fmt: fmt, addDays: addDays, diffDays: diffDays, dow: dow, mondayOf: mondayOf, romeNow: romeNow, buildDay: buildDay, dayStats: dayStats, levelFor: levelFor, streak: streak, pace: pace, laneCurrent: laneCurrent, laneCourses: laneCourses, isClassDay: isClassDay, LANE_CATS: LANE_CATS };
+  return { hhmm: hhmm, parse: parse, fmt: fmt, addDays: addDays, diffDays: diffDays, dow: dow, mondayOf: mondayOf, romeNow: romeNow, buildDay: buildDay, dayStats: dayStats, levelFor: levelFor, streak: streak, pace: pace, laneCurrent: laneCurrent, engineFor: engineFor, laneCourses: laneCourses, isClassDay: isClassDay, LANE_CATS: LANE_CATS };
 })();
 </script>
 <script id="dr-sync">
@@ -1104,9 +1119,15 @@ var DRSync = (function () {
         ${v ? html`<button class="linkbtn" onClick=${function () { setAdjust(b, 0); }}>Back to plan</button>` : ''}</div>`;
     }
     function counterDefs() {
-      var eng = L.laneCurrent(progress, 'engine'), des = L.laneCurrent(progress, 'design'), ix = progress.ixdf;
+      var eng = L.laneCurrent(progress, 'engine'), eng2 = null, des = L.laneCurrent(progress, 'design'), ix = progress.ixdf;
       var out = [];
+      var alt = cfg && cfg.engineAlternation;
+      if (alt && alt.courses) {
+        var open = alt.courses.map(function (id) { return progress[id]; }).filter(function (x) { return x && (x.current || 0) < (x.total || 0); });
+        if (open.length) { eng = open[0]; eng2 = open[1] || null; }
+      }
       if (eng) out.push({ key: 'engine', label: 'Engine lane', course: eng.name, id: eng.id, field: 'current', value: eng.current || 0, total: eng.total, lane: 'engine' });
+      if (eng2) out.push({ key: 'engine2', label: 'Engine lane', course: eng2.name, id: eng2.id, field: 'current', value: eng2.current || 0, total: eng2.total, lane: 'engine' });
       if (des) out.push({ key: 'design', label: 'Design lane', course: des.name, id: des.id, field: 'current', value: des.current || 0, total: des.total, lane: 'design' });
       var u = progress['chinese-udemy']; if (u) out.push({ key: 'udemy', label: 'Chinese · Udemy', course: 'Lectures done', id: u.id, field: 'current', value: u.current || 0, total: u.total });
       var h = progress.hsk2; if (h) out.push({ key: 'hsk', label: 'HSK 2 books', course: 'Lessons done', id: h.id, field: 'current', value: h.current || 0, total: h.total });
@@ -1268,6 +1289,7 @@ var DRSync = (function () {
             <div class="panel-head"><h2>Chinese today</h2>${plan.chinese.override && html`<button class="linkbtn" onClick=${function () { saveDay(sel, { chineseOverride: false }); }}>Back to schedule</button>`}</div>
             ${plan.chinese.type === 'revision' ? html`<p class="empty" style="margin:0">Revision week. From Mon 19 Oct: Udemy on Mon and Wed, HSK 2 books on Tue and Thu.</p>`
               : plan.chinese.type === 'none' ? html`<p class="empty" style="margin:0">No Chinese on Fridays. The engine lane starts at 05:55 instead.</p>`
+              : plan.chinese.type === 'pause' ? html`<p class="empty" style="margin:0">Chinese is paused until ${dm(L.addDays(cfg.chinesePause.to, 1))}. The Chinese slot goes to the Udemy design course; the regular schedule is back then.</p>`
               : plan.chinese.type === 'review' ? html`<p class="empty" style="margin:0">Weekend review: go back over this week's new words and grammar.</p>`
               : plan.chinese.type === 'prep' ? html`<p class="empty" style="margin:0">${cfg.chineseExam.label} prep until ${dm(cfg.chineseExam.date)}. The Udemy course and the HSK 2 books are paused and pick up again after the exam.</p>`
               : plan.chinese.type === 'exam' ? html`<p class="empty" style="margin:0">${cfg.chineseExam.label} today. Good luck!</p>`
